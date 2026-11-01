@@ -16,9 +16,11 @@ A multi-tenant manufacturing execution and inventory platform for small and mid-
 | Work orders with capacity check against machine rate and deadline | ✅ | `server/src/modules/production` |
 | Machines, telemetry ingestion, live Socket.IO feed per tenant | ✅ | `server/src/modules/machines` |
 | OEE calculation (pure function) | ✅ | `server/src/modules/analytics/oee.ts` |
+| Persisted telemetry: status intervals and production/defect deltas | ✅ | `server/src/modules/machines/telemetry.ts` |
+| `GET /api/analytics/oee` per machine over a time window (default 24 h) | ✅ | `server/src/modules/analytics/routes.ts` |
 | Machine simulator (12 machines by default) | ✅ | `simulator/` |
 | Minimal React + TypeScript client (auth + live machine grid) | ✅ | `client/` |
-| OEE/downtime persistence and charts, reports (PDF/CSV), notifications (Redis + BullMQ) | planned | |
+| OEE charts in the UI, downtime reasons, reports (PDF/CSV), notifications (Redis + BullMQ) | planned | |
 | Tailwind + shadcn/ui, Swagger/OpenAPI, Playwright E2E, Dockerfiles, deployment | planned | |
 
 ## Architecture
@@ -40,6 +42,7 @@ Key design decisions:
 - **Reservations are atomic.** A reservation is one `findOneAndUpdate` whose filter only matches when `onHand - reserved >= quantity`, inside a transaction that also writes the reservation record. Concurrent orders cannot both claim the same stock, and a failed second material rolls back the first.
 - **Tenancy.** Every collection carries `tenantId`, every query is scoped by it, and compound indexes start with `tenantId`. The tenant is read from the access token, never from the request body. Socket.IO connections join only their own `tenant:<id>` room.
 - **Auth.** Short-lived access JWT (15 min) plus a single-use rotating refresh token in an `httpOnly` cookie; only its SHA-256 hash is stored.
+- **OEE from stored data.** Each machine keeps one status interval per period (`RUNNING`/`IDLE`/`DOWN`) and per-reading production and defect *deltas* computed from the machine's cumulative counters (a counter that goes backwards is treated as a reset). Over a window, planned time is the whole window, availability counts only `RUNNING` time (idle and down are both lost time), and ideal cycle time is `3600 / ratedUnitsPerHour`. Readings assume one reporter per machine.
 - **OEE** = Availability × Performance × Quality, where Availability = run time / planned time, Performance = (ideal cycle time × total count) / run time (capped at 1), Quality = good / total.
 
 ## Run locally
@@ -75,7 +78,7 @@ Be aware of what has and has not been run:
 |---|---|---|
 | 1. Foundation (this repo) | 2 | Modular monolith, auth, tenancy, inventory, work orders, live feed |
 | 2. Hardening | 1–2 | Green CI, lockfile, input edge cases, pagination, audit log |
-| 3. Analytics | 1–2 | Persist telemetry, downtime events, OEE per machine/shift, Recharts dashboards |
+| 3. Analytics | 1–2 | ✅ telemetry persistence and OEE API; remaining: downtime reasons, per-shift OEE, Recharts dashboards |
 | 4. UI | 2 | React Router, work-order and inventory screens, Tailwind + shadcn/ui |
 | 5. Background jobs | 1–2 | Redis + BullMQ: low-stock and late-order alerts, CSV/PDF reports |
 | 6. Production readiness | 2 | OpenAPI docs, Playwright E2E, Dockerfiles, deployment, benchmarks |

@@ -5,7 +5,7 @@ import type { Env } from "../../config/env.js";
 import { authenticate, requirePermission, tenantOf } from "../../middleware/auth.js";
 import { asyncHandler, HttpError } from "../../middleware/errors.js";
 import { releaseReservations, reserveMaterial } from "../inventory/service.js";
-import { Machine } from "../machines/routes.js";
+import { Machine } from "../machines/models.js";
 import { checkCapacity } from "./scheduling.js";
 
 const workOrderSchema = new Schema(

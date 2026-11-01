@@ -21,6 +21,7 @@ interface SimMachine {
   code: string;
   status: Status;
   count: number;
+  defects: number;
 }
 
 async function api(path: string, token: string | null, body?: unknown): Promise<Response> {
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
     code: `CNC-${String(i + 1).padStart(3, "0")}`,
     status: "IDLE",
     count: 0,
+    defects: 0,
   }));
 
   for (const m of machines) {
@@ -58,13 +60,18 @@ async function main(): Promise<void> {
   setInterval(() => {
     for (const m of machines) {
       m.status = nextStatus(m.status);
-      if (m.status === "RUNNING") m.count += Math.floor(Math.random() * 3) + 1;
+      if (m.status === "RUNNING") {
+        const made = Math.floor(Math.random() * 3) + 1;
+        m.count += made;
+        if (Math.random() < 0.03 * made) m.defects += 1; // roughly 3% defect rate
+      }
       const running = m.status === "RUNNING";
       void api(`/api/machines/${m.code}/telemetry`, accessToken, {
         status: m.status,
         temperature: Number((running ? 55 + Math.random() * 25 : 25 + Math.random() * 5).toFixed(1)),
         rpm: running ? Math.round(2000 + Math.random() * 800) : 0,
         productionCount: m.count,
+        defectCount: m.defects,
         timestamp: new Date().toISOString(),
       }).catch((e: unknown) => console.error(m.code, e));
     }

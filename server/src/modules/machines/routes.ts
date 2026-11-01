@@ -1,23 +1,10 @@
 import { Router } from "express";
-import { Schema, model } from "mongoose";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { authenticate, requirePermission, tenantOf } from "../../middleware/auth.js";
 import { asyncHandler, HttpError } from "../../middleware/errors.js";
-
-const machineSchema = new Schema(
-  {
-    tenantId: { type: Schema.Types.ObjectId, required: true },
-    code: { type: String, required: true, trim: true },
-    name: { type: String, required: true, trim: true },
-    ratedUnitsPerHour: { type: Number, required: true, min: 0.0001 },
-    status: { type: String, enum: ["RUNNING", "IDLE", "DOWN"], default: "IDLE" },
-    lastTelemetryAt: Date,
-  },
-  { timestamps: true },
-);
-machineSchema.index({ tenantId: 1, code: 1 }, { unique: true });
-export const Machine = model("Machine", machineSchema);
+import { Machine } from "./models.js";
+import { recordReading } from "./telemetry.js";
 
 const createBody = z.object({
   code: z.string().min(1),
@@ -29,7 +16,9 @@ const telemetryBody = z.object({
   status: z.enum(["RUNNING", "IDLE", "DOWN"]),
   temperature: z.number().optional(),
   rpm: z.number().min(0).optional(),
+  // Cumulative counters since the machine started; the server stores per-reading deltas.
   productionCount: z.number().int().min(0).optional(),
+  defectCount: z.number().int().min(0).optional(),
   timestamp: z.string().datetime().optional(),
 });
 
@@ -68,17 +57,16 @@ export function machinesRouter(env: Env, publish: Publish): Router {
     asyncHandler(async (req, res) => {
       const body = telemetryBody.parse(req.body);
       const tenantId = tenantOf(req);
-      const machine = await Machine.findOneAndUpdate(
-        { tenantId, code: req.params.code },
-        { status: body.status, lastTelemetryAt: new Date() },
-        { new: true },
-      );
-      if (!machine) throw new HttpError(404, "Machine not found");
-      publish(String(tenantId), "machine:telemetry", {
-        machineId: machine.code,
-        ...body,
-        timestamp: body.timestamp ?? new Date().toISOString(),
+      const code = req.params.code ?? "";
+      const at = body.timestamp ? new Date(body.timestamp) : new Date();
+      const found = await recordReading(tenantId, code, {
+        status: body.status,
+        productionCount: body.productionCount,
+        defectCount: body.defectCount,
+        at,
       });
+      if (!found) throw new HttpError(404, "Machine not found");
+      publish(String(tenantId), "machine:telemetry", { machineId: code, ...body, timestamp: at.toISOString() });
       res.status(202).json({ ok: true });
     }),
   );
