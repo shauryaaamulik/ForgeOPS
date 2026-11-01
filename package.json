@@ -1,0 +1,16 @@
+{
+  "name": "forgeops",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ForgeOps - multi-tenant manufacturing execution and inventory platform",
+  "workspaces": ["server", "client", "simulator"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "simulate": "npm run start -w simulator",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w simulator",
+    "test": "npm run test -w server",
+    "build": "npm run build -w server && npm run build -w client"
+  }
+}
